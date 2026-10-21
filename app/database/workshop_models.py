@@ -15,8 +15,6 @@ class Customer(Base):
     vehicles: Mapped[list["Vehicle"]] = relationship(
         back_populates="customer"
     )
-
-
 class Vehicle(Base):
     __tablename__ = "vehicles"
     vehicle_id: Mapped[int] = mapped_column(primary_key=True)
@@ -88,6 +86,10 @@ class RepairTicket(Base):
     parts_used: Mapped[list["RepairPart"]] = relationship(
         back_populates="repair_ticket"
     )
+    invoice: Mapped["Invoice | None"] = relationship(
+    back_populates="repair_ticket",
+    uselist=False
+    )
 class SparePart(Base):
     __tablename__ = "spare_parts"
     part_id: Mapped[int] = mapped_column(primary_key=True)
@@ -130,4 +132,83 @@ class RepairPart(Base):
     )
     spare_part: Mapped["SparePart"] = relationship(
         back_populates="repair_parts"
+    )
+class Invoice(Base):
+    __tablename__ = "invoices"
+
+    invoice_id: Mapped[int] = mapped_column(
+        primary_key=True
+    )
+
+    ticket_id: Mapped[int] = mapped_column(
+        ForeignKey("repair_tickets.ticket_id"),
+        unique=True,
+        nullable=False
+    )
+
+    parts_total: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2),
+        default=Decimal("0.00")
+    )
+
+    labor_cost: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2),
+        default=Decimal("0.00")
+    )
+
+    tax_amount: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2),
+        default=Decimal("0.00")
+    )
+
+    total_amount: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2),
+        nullable=False
+    )
+
+    status: Mapped[str] = mapped_column(
+        String(20),
+        default="Unpaid"
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=func.now()
+    )
+
+    repair_ticket: Mapped["RepairTicket"] = relationship(
+        back_populates="invoice"
+    )
+
+    payments: Mapped[list["Payment"]] = relationship(
+        back_populates="invoice"
+    )
+class Payment(Base):
+    __tablename__ = "payments"
+
+    payment_id: Mapped[int] = mapped_column(
+        primary_key=True
+    )
+
+    invoice_id: Mapped[int] = mapped_column(
+        ForeignKey("invoices.invoice_id"),
+        nullable=False
+    )
+
+    amount: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2),
+        nullable=False
+    )
+
+    payment_method: Mapped[str] = mapped_column(
+        String(30)
+    )
+
+    paid_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=func.now()
+    )
+
+    invoice: Mapped["Invoice"] = relationship(
+        back_populates="payments"
     )

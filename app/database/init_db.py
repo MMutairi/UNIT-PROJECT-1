@@ -1,6 +1,6 @@
 from app.database.connection import engine
 from app.database.base import Base
-from app.database import models
+from app.database import workshop_models, auth_models
 
 
 def initialize_database():
