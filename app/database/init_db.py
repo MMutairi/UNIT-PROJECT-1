@@ -7,6 +7,7 @@ def initialize_database():
     try:
         Base.metadata.create_all(bind=engine)
         print("Database tables created successfully!")
+
     except Exception as error:
         print(f"Database initialization failed: {error}")
         raise
