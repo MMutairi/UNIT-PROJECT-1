@@ -1,8 +1,14 @@
-
 import maskpass
+from app.cli.navigation import (
+    show_menu,
+    navigation_action,
+    BACK,
+    LOGOUT,
+)
 from app.auth.login import authenticate_user
 from app.auth.permissions import has_permission
 from app.database.connection import SessionLocal
+
 from app.modules.admin.employee_functions import (
     add_employee,
     list_employees,
@@ -12,65 +18,58 @@ from app.modules.admin.employee_functions import (
     delete_employee,
     manage_employee_permissions,
 )
+
 def admin_menu(session, admin):
-    """Display the Administrator menu and handle user choices."""
+    """Display the Administrator menu."""
+
+    options = {
+        "1": "Create Employee",
+        "2": "List Employees",
+        "3": "Edit Employee Roles",
+        "4": "Activate / Deactivate Employee",
+        "5": "Reset Employee Password",
+        "6": "Delete Employee",
+        "7": "Manage Employee Permissions",
+    }
+
+    actions = {
+        "1": add_employee,
+        "2": list_employees,
+        "3": edit_employee_roles,
+        "4": change_employee_status,
+        "5": reset_employee_password,
+        "6": delete_employee,
+        "7": manage_employee_permissions,
+    }
 
     while True:
-        print("\n" + "=" * 45)
-        print("       AUTOCARE ADMINISTRATOR MENU")
-        print("=" * 45)
+        choice = show_menu(
+            title="AUTOCARE ADMINISTRATOR",
+            options=options,
+            username=admin.username,
+        )
 
-        print(f"Logged in as: {admin.username}")
-        print("-" * 45)
+        action = navigation_action(choice)
 
-        print("1. Create Employee")
-        print("2. List Employees")
-        print("3. Edit Employee Roles")
-        print("4. Activate / Deactivate Employee")
-        print("5. Reset Employee Password")
-        print("6. Delete Employee")
-        print("7. Manage Employee Permissions")
-        print("0. Logout")
+        if action == BACK:
+            print("\nReturning to Departments...")
+            return BACK
 
-        print("-" * 45)
+        if action == LOGOUT:
+            return LOGOUT
 
-        choice = input("Select an option: ").strip()
+        selected_function = actions.get(choice)
 
-        if choice == "1":
-            add_employee(session, admin)
-
-        elif choice == "2":
-            list_employees(session, admin)
-
-        elif choice == "3":
-            edit_employee_roles(session, admin)
-
-        elif choice == "4":
-            change_employee_status(session, admin)
-
-        elif choice == "5":
-            reset_employee_password(session, admin)
-
-        elif choice == "6":
-            delete_employee(session, admin)
-
-        elif choice == "7":
-            manage_employee_permissions(session, admin)
-
-        elif choice == "0":
-            print("\nLogged out successfully.")
-            break
-
-        else:
+        if selected_function is None:
             print("\nInvalid option. Please try again.")
+            continue
 
+        selected_function(session, admin)
 
 def main():
-    """Authenticate an authorized user and open the Admin menu."""
+    """Run the Administrator menu independently."""
 
-    print("\n" + "=" * 45)
-    print("             AUTOCARE LOGIN")
-    print("=" * 45)
+    print("\n========== AUTOCARE ADMIN LOGIN ==========")
 
     username = input("Username: ").strip()
 
@@ -94,26 +93,20 @@ def main():
         )
 
         if admin is None:
-            print(
-                "\nInvalid username, password, "
-                "or inactive account."
-            )
+            print("\nInvalid credentials or inactive account.")
             return
 
-        if not has_permission(
-            session,
-            admin,
-            "users.manage"
-        ):
+        if not has_permission(session, admin, "users.manage"):
             print("\nAccess denied.")
-            print(
-                "You do not have permission "
-                "to access the Administrator menu."
-            )
             return
 
-        print(f"\nWelcome back, {admin.username}!")
+        result = admin_menu(session, admin)
 
-        admin_menu(session, admin)
+        if result == "logout":
+            print("\nLogged out successfully.")
+        else:
+            print("\nAdministrator menu closed.")
+
+
 if __name__ == "__main__":
     main()

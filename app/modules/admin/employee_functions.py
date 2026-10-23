@@ -14,8 +14,6 @@ from app.database.auth_models import (
     Permission,
     UserPermissionOverride,
 )
-
-
 def list_employees(session, admin):
     """Display all registered employees and their roles."""
 
