@@ -30,9 +30,9 @@ def create_employee(
     if len(username) > 50:
         raise ValueError("Username is too long.")
 
-    if len(password) < 10:
+    if len(password) < 12:
         raise ValueError(
-            "Password must contain at least 10 characters."
+            "Password must contain at least 12 characters."
         )
 
     if not role_names:

@@ -1,12 +1,9 @@
 
 from getpass import getpass
-
 from sqlalchemy import select
-
 from app.auth.passwords import hash_password
 from app.database.connection import SessionLocal
 from app.database.auth_models import User, Role, UserRole
-
 
 def create_admin():
     """Create the first administrator account."""

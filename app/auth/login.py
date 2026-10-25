@@ -5,7 +5,6 @@ from sqlalchemy.orm import Session
 from app.auth.passwords import verify_password
 from app.database.auth_models import User
 from app.database.connection import SessionLocal
-
 def authenticate_user(
     session: Session,
     username: str,

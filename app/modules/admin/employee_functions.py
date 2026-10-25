@@ -1,6 +1,7 @@
 import maskpass
 
 from sqlalchemy import select, delete
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import selectinload
 
 from app.auth.passwords import hash_password
@@ -13,7 +14,64 @@ from app.database.auth_models import (
     UserRole,
     Permission,
     UserPermissionOverride,
+    MechanicAccount,
 )
+from app.database.workshop_models import Mechanic
+def choose_mechanic_for_account(session):
+    """Select an available mechanic, or create one in the current transaction.
+
+    The caller must commit the user, roles and mapping together. Raises ValueError
+    for cancelled/invalid input; the caller should roll back on failure.
+    """
+    available = session.scalars(
+        select(Mechanic)
+        .outerjoin(
+            MechanicAccount,
+            Mechanic.mechanic_id == MechanicAccount.mechanic_id,
+        )
+        .where(
+            Mechanic.is_active.is_(True),
+            MechanicAccount.mechanic_id.is_(None),
+        )
+        .order_by(Mechanic.mechanic_id)
+    ).all()
+
+    print("\n========== LINK MECHANIC ==========")
+    for mechanic in available:
+        print(
+            f"{mechanic.mechanic_id}. {mechanic.full_name} "
+            f"({mechanic.specialty})"
+        )
+    print("0. Create new mechanic record")
+
+    answer = input("Mechanic ID (or 0 to create): ").strip()
+    if not answer.isascii() or not answer.isdigit():
+        raise ValueError("Enter a valid mechanic ID.")
+
+    mechanic_id = int(answer)
+    if mechanic_id:
+        selected = next(
+            (m for m in available if m.mechanic_id == mechanic_id), None
+        )
+        if selected is None:
+            raise ValueError("Mechanic unavailable or already linked.")
+        return selected
+
+    full_name = input("Mechanic full name: ").strip()
+    specialty = input("Specialty: ").strip()
+    if not 1 <= len(full_name) <= 100:
+        raise ValueError("Mechanic name must contain 1 to 100 characters.")
+    if not 1 <= len(specialty) <= 50:
+        raise ValueError("Specialty must contain 1 to 50 characters.")
+
+    mechanic = Mechanic(
+        full_name=full_name, specialty=specialty, is_active=True
+    )
+    session.add(mechanic)
+    session.flush()
+    return mechanic
+
+
 def list_employees(session, admin):
     """Display all registered employees and their roles."""
 
@@ -53,96 +111,55 @@ def list_employees(session, admin):
 
 
 def add_employee(session, admin):
-    """Create a new employee and assign one or more roles."""
-
+    """Create an employee; automatically map Mechanic-role accounts."""
     if not has_permission(session, admin, "users.manage"):
         print("Access denied.")
         return
 
     print("\n========== CREATE EMPLOYEE ==========")
-
     username = input("Username: ").strip()
-
-    password = maskpass.askpass(
-        prompt="Password: ",
-        mask="*"
-    )
-
-    confirm_password = maskpass.askpass(
-        prompt="Confirm Password: ",
-        mask="*"
-    )
-
-    if password != confirm_password:
+    password = maskpass.askpass(prompt="Password: ", mask="*")
+    confirmation = maskpass.askpass(prompt="Confirm Password: ", mask="*")
+    if password != confirmation:
         print("Passwords do not match.")
         return
 
-    roles = session.scalars(
-        select(Role).order_by(Role.role_name)
-    ).all()
-
+    roles = session.scalars(select(Role).order_by(Role.role_name)).all()
     if not roles:
-        print("No roles found. Seed permissions first.")
+        print("No roles available. Run permission seeding first.")
         return
-
-    print("\nAvailable Roles:")
-
-    for index, role in enumerate(roles, start=1):
+    print("\nAvailable roles:")
+    for index, role in enumerate(roles, 1):
         print(f"{index}. {role.role_name}")
 
-    choice = input(
-        "\nSelect role numbers (e.g. 2,4): "
-    ).strip()
-
+    answer = input("Role numbers (e.g. 2,4): ").strip()
     try:
-        selected_numbers = {
-            int(number.strip())
-            for number in choice.split(",")
-        }
-
-        if not selected_numbers or any(
-            number < 1 or number > len(roles)
-            for number in selected_numbers
-        ):
-            print("Invalid role selection.")
-            return
-
-        selected_roles = [
-            roles[number - 1].role_name
-            for number in sorted(selected_numbers)
-        ]
-
-        print("\nSelected Roles:")
-
-        for role_name in selected_roles:
-            print(f"- {role_name}")
-
-        confirm = input(
-            "\nCreate employee? (y/N): "
-        ).strip().lower()
-
-        if confirm not in ("y", "yes"):
-            print("Employee creation cancelled.")
+        choices = {int(value.strip()) for value in answer.split(",")}
+        if not choices or any(n < 1 or n > len(roles) for n in choices):
+            raise ValueError("Invalid role numbers.")
+        selected_roles = [roles[n - 1].role_name for n in sorted(choices)]
+        print(f"\nRoles: {', '.join(selected_roles)}")
+        if input("Create employee? (y/N): ").strip().lower() not in ("y", "yes"):
+            print("Cancelled.")
             return
 
         employee = create_employee(
-            session=session,
-            acting_user=admin,
-            username=username,
-            password=password,
-            role_names=selected_roles
+            session, admin, username, password, selected_roles
         )
-
+        if "Mechanic" in selected_roles:
+            mechanic = choose_mechanic_for_account(session)
+            session.add(
+                MechanicAccount(
+                    user_id=employee.user_id, mechanic_id=mechanic.mechanic_id
+                )
+            )
         session.commit()
-
-        print("\nEmployee created successfully!")
-        print(f"Employee ID: {employee.user_id}")
-        print(f"Username: {employee.username}")
-        print(f"Roles: {', '.join(selected_roles)}")
-
-    except (ValueError, PermissionError) as error:
+        print(f"\nCreated employee {employee.username} (ID {employee.user_id}).")
+        if "Mechanic" in selected_roles:
+            print(f"Linked to mechanic ID {mechanic.mechanic_id}.")
+    except (ValueError, PermissionError, SQLAlchemyError) as error:
         session.rollback()
-        print(f"Error: {error}")
+        print(f"Employee creation failed: {error}")
 
 
 def edit_employee_roles(session, admin):
@@ -242,6 +259,21 @@ def edit_employee_roles(session, admin):
             print("Changes cancelled.")
             return
 
+        # Keep the login-to-mechanic mapping consistent with role changes.
+        selected_role_names = {
+            role.role_name for role in roles if role.role_id in selected_role_ids
+        }
+        mapping = session.get(MechanicAccount, employee.user_id)
+        if "Mechanic" in selected_role_names and mapping is None:
+            mechanic = choose_mechanic_for_account(session)
+            session.add(
+                MechanicAccount(
+                    user_id=employee.user_id, mechanic_id=mechanic.mechanic_id
+                )
+            )
+        elif "Mechanic" not in selected_role_names and mapping is not None:
+            session.delete(mapping)
+
         # Remove roles that are no longer selected.
         for assignment in current_assignments:
             if assignment.role_id not in selected_role_ids:
@@ -260,9 +292,9 @@ def edit_employee_roles(session, admin):
 
         print("\nEmployee roles updated successfully!")
 
-    except ValueError:
+    except (ValueError, SQLAlchemyError) as error:
         session.rollback()
-        print("Invalid input. Enter numbers separated by commas.")
+        print(f"Unable to change roles: {error}")
 def change_employee_status(session, admin):
     """Activate or deactivate an employee account."""
 
@@ -429,6 +461,11 @@ def delete_employee(session, admin):
     if confirm != "DELETE":
         print("Deletion cancelled.")
         return
+
+    # Remove account mapping; keep the workshop mechanic and ticket history.
+    session.execute(
+        delete(MechanicAccount).where(MechanicAccount.user_id == employee.user_id)
+    )
 
     # Delete individual permission overrides.
     session.execute(

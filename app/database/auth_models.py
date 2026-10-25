@@ -2,6 +2,7 @@
 from sqlalchemy import ForeignKey, String, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database.base import Base
+from app.database.workshop_models import Mechanic  # Register mapped mechanic model
 
 class User(Base):
     __tablename__ = "users"
@@ -107,3 +108,19 @@ class UserPermissionOverride(Base):
     permission: Mapped["Permission"] = relationship(
         back_populates="user_overrides"
     )
+
+
+class MechanicAccount(Base):
+    """One-to-one mapping from a login account to the mechanic roster."""
+
+    __tablename__ = "mechanic_accounts"
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.user_id"), primary_key=True
+    )
+    mechanic_id: Mapped[int] = mapped_column(
+        ForeignKey("mechanics.mechanic_id"), unique=True, nullable=False
+    )
+
+    user: Mapped["User"] = relationship("User")
+    mechanic: Mapped["Mechanic"] = relationship("Mechanic")
