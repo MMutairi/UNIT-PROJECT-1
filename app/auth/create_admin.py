@@ -1,5 +1,4 @@
-
-from getpass import getpass
+from app.auth.password_input import ask_password
 from sqlalchemy import select
 from app.auth.passwords import hash_password
 from app.database.connection import SessionLocal
@@ -37,9 +36,8 @@ def create_admin():
             print("Username already exists.")
             return
 
-        password = getpass("Password: ")
-        confirm_password = getpass("Confirm password: ")
-
+        password = ask_password("Password: ")
+        confirm_password = ask_password("Confirm password: ")
         if password != confirm_password:
             print("Passwords do not match.")
             return

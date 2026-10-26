@@ -1,13 +1,11 @@
 import maskpass
-
+from app.auth.password_input import ask_password
 from sqlalchemy import select, delete
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import selectinload
-
 from app.auth.passwords import hash_password
 from app.auth.permissions import has_permission
 from app.auth.user_management import create_employee
-
 from app.database.auth_models import (
     User,
     Role,
@@ -118,8 +116,8 @@ def add_employee(session, admin):
 
     print("\n========== CREATE EMPLOYEE ==========")
     username = input("Username: ").strip()
-    password = maskpass.askpass(prompt="Password: ", mask="*")
-    confirmation = maskpass.askpass(prompt="Confirm Password: ", mask="*")
+    password = ask_password("Password: ")
+    confirmation = ask_password("Confirm Password: ")
     if password != confirmation:
         print("Passwords do not match.")
         return
@@ -356,6 +354,7 @@ def change_employee_status(session, admin):
     session.commit()
 
     print(f"\nEmployee {action.lower()}d successfully!")
+
 def reset_employee_password(session, admin):
     """Reset an employee's password."""
 
@@ -383,15 +382,9 @@ def reset_employee_password(session, admin):
 
     print(f"\nEmployee: {employee.username}")
 
-    password = maskpass.askpass(
-        prompt="New Password: ",
-        mask="*"
-    )
+    password = ask_password("New Password: ")
 
-    confirm_password = maskpass.askpass(
-        prompt="Confirm Password: ",
-        mask="*"
-    )
+    confirm_password = ask_password("Confirm Password: ")
 
     if password != confirm_password:
         print("Passwords do not match.")
